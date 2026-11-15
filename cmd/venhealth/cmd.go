@@ -175,8 +175,12 @@ func eventMonitor(targetEvents []string) {
 				hostname = e.EventCreatedBy.Agent.Hostname
 			} else { // If agent doesn't have it, look at resource changes
 				for _, r := range illumioapi.PtrToVal(e.ResourceChanges) {
-					if r.Resource.Workload.Hostname != nil && *r.Resource.Workload.Hostname != "" {
+					if r.Resource.Workload != nil && illumioapi.PtrToVal(r.Resource.Workload.Hostname) != "" {
 						hostname = *r.Resource.Workload.Hostname
+						break
+					}
+					if r.Resource.VEN != nil && illumioapi.PtrToVal(r.Resource.VEN.Hostname) != "" {
+						hostname = *r.Resource.VEN.Hostname
 						break
 					}
 				}
