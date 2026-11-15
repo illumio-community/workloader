@@ -15,6 +15,9 @@ import (
 var Logger log.Logger
 var logFile string
 
+// LogFileFlag is the value of an explicitly passed --log-file flag. Blank means the flag was not passed.
+var LogFileFlag string
+
 func redactApiCreds(input string) string {
 	// Compile the regular expression.
 	// "--api-user " followed by \S* (zero or more non-whitespace characters).
@@ -38,11 +41,14 @@ func redactApiCreds(input string) string {
 
 func SetUpLogging() {
 
-	// First check env variable, then config file, then use default
-	logFile = os.Getenv("WORKLOADER_LOG")
-	if logFile == "" && viper.GetString("log_file") != "" {
-		logFile = viper.GetString("log_file")
-	} else {
+	// Precedence: --log-file flag, then WORKLOADER_LOG env var, then default.
+	// The flag is passed via LogFileFlag rather than viper because viper values are written back to pce.yaml,
+	// which would make a one-time --log-file permanent and let stale log_file entries override the env var.
+	logFile = LogFileFlag
+	if logFile == "" {
+		logFile = os.Getenv("WORKLOADER_LOG")
+	}
+	if logFile == "" {
 		logFile = "workloader.log"
 	}
 	f, err := os.OpenFile(logFile, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0755)
