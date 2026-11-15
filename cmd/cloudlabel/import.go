@@ -162,7 +162,12 @@ func ImportCloudLabelsFromCSV(input Input) {
 			continue
 		}
 
-		a := illumiocloudapi.LabelAssignment{CspID: resource.Id}
+		if resource.CspID == "" {
+			utils.LogWarningf(true, "csv line %d - %s has no csp_id from the cloud api. skipping.", csvLine, compareString)
+			continue
+		}
+		// The labeling api keys on the csp_id (e.g., arn or azure resource id), not the illumio resource id
+		a := illumiocloudapi.LabelAssignment{CspID: resource.CspID}
 		if len(add) > 0 {
 			a.Add = &add
 		}
