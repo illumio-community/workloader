@@ -18,6 +18,7 @@ import (
 	"github.com/brian1917/workloader/cmd/ccupdate"
 	"github.com/brian1917/workloader/cmd/checkversion"
 	"github.com/brian1917/workloader/cmd/cloudinventory"
+	"github.com/brian1917/workloader/cmd/cloudlabel"
 	"github.com/brian1917/workloader/cmd/compatibility"
 	"github.com/brian1917/workloader/cmd/containmentswitch"
 	"github.com/brian1917/workloader/cmd/cspiplist"
@@ -50,6 +51,7 @@ import (
 	"github.com/brian1917/workloader/cmd/netscalersync"
 	"github.com/brian1917/workloader/cmd/nicexport"
 	"github.com/brian1917/workloader/cmd/nicmanage"
+	"github.com/brian1917/workloader/cmd/nsgruleexport"
 	"github.com/brian1917/workloader/cmd/pairingprofileexport"
 	"github.com/brian1917/workloader/cmd/pcemgmt"
 	"github.com/brian1917/workloader/cmd/permissionsexport"
@@ -100,7 +102,11 @@ Workloader is a tool that helps manage resources in an Illumio PCE.`,
 		viper.Set("no_prompt", noPrompt)
 		viper.Set("verbose", verbose)
 		viper.Set("continue_on_error", continueOnError)
-		viper.Set("log_file", logFile)
+		// Only use the log file flag when explicitly passed so the flag default does not override WORKLOADER_LOG.
+		// Not stored in viper so it is never persisted to pce.yaml.
+		if cmd.Flags().Changed("log-file") {
+			utils.LogFileFlag = logFile
+		}
 		// If the targetPCE is not set in the persistent flag, we clear it from the YAML
 		if targetPCE == "" {
 			viper.Set("target_pce", "")
@@ -199,6 +205,8 @@ func init() {
 	RootCmd.AddCommand(pcemgmt.AddTenantCmd)
 	RootCmd.AddCommand(cloudinventory.CloudInventoryCmd)
 	RootCmd.AddCommand(vnetpeeringreport.VnetPeeringReportCmd)
+	RootCmd.AddCommand(nsgruleexport.CloudInventoryCmd)
+	RootCmd.AddCommand(cloudlabel.CloudLabelCmd)
 
 	// Automation
 	RootCmd.AddCommand(azurelabel.AzureLabelCmd)
