@@ -2,16 +2,19 @@ package cloudinventory
 
 import (
 	"fmt"
+	"sort"
 	"strconv"
+	"strings"
 
 	"github.com/brian1917/illumiocloudapi"
+	"github.com/brian1917/workloader/cmd/cloudlabel"
 	"github.com/brian1917/workloader/cmd/pcemgmt"
 	"github.com/brian1917/workloader/utils"
 	"github.com/spf13/cobra"
 )
 
 // Declare local global variables
-var tenantName, outputFileName, cloudCookie string
+var tenantName, outputFileName, cloudCookie, resources string
 var includeLicenses bool
 
 func init() {
@@ -19,6 +22,7 @@ func init() {
 	CloudInventoryCmd.Flags().StringVar(&outputFileName, "output-file", "", "optionally specify the name of the output file location. default is current location with a timestamped filename.")
 	CloudInventoryCmd.Flags().BoolVarP(&includeLicenses, "licenses", "l", false, "include license information in the output.")
 	CloudInventoryCmd.Flags().StringVar(&cloudCookie, "cookie", "", "optionally set a cookie for authenticating to the api.")
+	CloudInventoryCmd.Flags().StringVar(&resources, "resources", "", "optionally specify only specific resources to include in the export. resources should be comma-separated. do not use spaces after commas.")
 	CloudInventoryCmd.Flags().SortFlags = false
 }
 
@@ -50,8 +54,17 @@ func CloudInventory() {
 		utils.LogErrorf("cannot authenticate to tenant - no client id and secret and no cookie)")
 	}
 
-	apiResponses, err := tenant.GetResources(illumiocloudapi.ResourcesPostRequest{})
-	// apiResponses, err := tenant.GetResources(illumiocloudapi.ResourcesPostRequest{ObjectType: []string{"Microsoft.Network/networkWatchers/FlowLogs"}})
+	// Parse the resources flag into a slice
+	resourceList := []string{}
+	if resources != "" {
+		resourceList = strings.Split(resources, ",")
+		for i := range resourceList {
+			resourceList[i] = strings.TrimSpace(resourceList[i])
+		}
+	}
+
+	// apiResponses, err := tenant.GetResources(illumiocloudapi.ResourcesPostRequest{})
+	apiResponses, err := tenant.GetResources(illumiocloudapi.ResourcesPostRequest{ObjectType: resourceList})
 	utils.LogMultiAPIRespV2(apiResponses)
 	if err != nil {
 		utils.LogErrorf("getting resources from cloud - %s", err)
@@ -82,9 +95,26 @@ func CloudInventory() {
 	}
 
 	// Output the data to a csv file
-	csvData := [][]string{{"cloud", "account_id", "account_name", "resource_id", "resource_name", "object_type", "dest_csp_id", "category", "subcategory"}}
+	// Header names come from cloudlabel so this output can be used as cloud-label input
+	csvData := [][]string{{cloudlabel.HeaderCloud, cloudlabel.HeaderAccountID, cloudlabel.HeaderAccountName, cloudlabel.HeaderID, cloudlabel.HeaderName, cloudlabel.HeaderObjectType, cloudlabel.HeaderDestCspID, cloudlabel.HeaderCategory, cloudlabel.HeaderSubcategory, cloudlabel.HeaderTags}}
 	if includeLicenses {
-		csvData[0] = append(csvData[0], "segmentation_licenses", "insights_licenses")
+		csvData[0] = append(csvData[0], cloudlabel.HeaderSegLicenses, cloudlabel.HeaderInsLicenses)
+	}
+
+	// Get every label key used across the resources and add a column for each
+	labelKeyMap := make(map[string]bool)
+	for _, item := range tenant.Resources {
+		for _, l := range item.Labels {
+			labelKeyMap[l.Key] = true
+		}
+	}
+	labelKeys := make([]string, 0, len(labelKeyMap))
+	for k := range labelKeyMap {
+		labelKeys = append(labelKeys, k)
+	}
+	sort.Strings(labelKeys)
+	for _, k := range labelKeys {
+		csvData[0] = append(csvData[0], cloudlabel.LabelHeader(k))
 	}
 
 	// Add the resource data
@@ -94,6 +124,17 @@ func CloudInventory() {
 		if item.Properties.DestinationCSPID != "" {
 			x = item.Properties.DestinationCSPID
 		}
+		// build tags string
+		tagKeys := make([]string, 0, len(item.Tags))
+		for k := range item.Tags {
+			tagKeys = append(tagKeys, k)
+		}
+		sort.Strings(tagKeys)
+		tagPairs := make([]string, 0, len(tagKeys))
+		for _, k := range tagKeys {
+			tagPairs = append(tagPairs, k+"="+item.Tags[k])
+		}
+		tagsStr := strings.Join(tagPairs, ";")
 		row := []string{
 			item.Cloud,
 			item.AccountID,
@@ -104,11 +145,15 @@ func CloudInventory() {
 			x,
 			item.Category,
 			item.Subcategory,
+			tagsStr,
 		}
 		if includeLicenses {
 			row = append(row, strconv.FormatFloat(segmentationLicenseResourceMap[item.ObjectType], 'f', -1, 64), strconv.FormatFloat(insightsLicenseResourceMap[item.ObjectType], 'f', -1, 64))
 			segmentationLicenseSummaryMap[item.ObjectType] = segmentationLicenseSummaryMap[item.ObjectType] + segmentationLicenseResourceMap[item.ObjectType]
 			insightsLicenseSummaryMap[item.ObjectType] = insightsLicenseSummaryMap[item.ObjectType] + insightsLicenseResourceMap[item.ObjectType]
+		}
+		for _, k := range labelKeys {
+			row = append(row, item.GetLabelValueByKey(k))
 		}
 		csvData = append(csvData, row)
 	}
