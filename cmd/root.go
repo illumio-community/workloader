@@ -329,13 +329,14 @@ var versionCmd = &cobra.Command{
 	},
 }
 
-var continueOnErrorDefault, skipVersionCheck, defaultPCE, getAPIBehavior string
+var continueOnErrorDefault, skipVersionCheck, defaultPCE, getAPIBehavior, errorOutput string
 
 func init() {
 	SettingsCmd.Flags().StringVar(&defaultPCE, "default-pce", "", "name of pce to be the deafult")
 	SettingsCmd.Flags().StringVar(&continueOnErrorDefault, "continue-on-error-default", "", "continue or stop. continue is equivalent to always using the global continue-on-error flag")
 	SettingsCmd.Flags().StringVar(&skipVersionCheck, "skip-version-check", "", "skip version check")
 	SettingsCmd.Flags().StringVar(&getAPIBehavior, "api-behavior", "", "single or multi. single waits for each get api to the pce to complete before calling the next.")
+	SettingsCmd.Flags().StringVar(&errorOutput, "error-output", "", "stdout or stderr. where error messages are printed to the console. default is stdout.")
 }
 
 var SettingsCmd = &cobra.Command{
@@ -356,6 +357,19 @@ var SettingsCmd = &cobra.Command{
 				utils.LogError(err.Error())
 			}
 			utils.LogInfo(fmt.Sprintf("continue_on_error_default set to %s", strings.ToLower(continueOnErrorDefault)), true)
+		}
+
+		// Error output
+		if errorOutput != "" {
+			if strings.ToLower(errorOutput) != "stdout" && strings.ToLower(errorOutput) != "stderr" {
+				utils.LogError("error-output must be stdout or stderr")
+				os.Exit(1) // Force exit here regardless of what settings are
+			}
+			viper.Set("error_output", strings.ToLower(errorOutput))
+			if err := viper.WriteConfig(); err != nil {
+				utils.LogError(err.Error())
+			}
+			utils.LogInfo(fmt.Sprintf("error_output set to %s", strings.ToLower(errorOutput)), true)
 		}
 
 		// Skip version check

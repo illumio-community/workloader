@@ -59,11 +59,20 @@ func SetUpLogging() {
 
 }
 
-// LogError writes the error the workloader.log and always prints an error to stdout.
+// errorOutput returns the writer for console error messages. Defaults to stdout unless
+// error_output is set to stderr in pce.yaml (via workloader settings --error-output).
+func errorOutput() *os.File {
+	if viper.GetString("error_output") == "stderr" {
+		return os.Stderr
+	}
+	return os.Stdout
+}
+
+// LogError writes the error the workloader.log and always prints an error to stdout (or stderr if error_output is set to stderr).
 func LogError(msg string) {
 
 	Logger.SetPrefix(time.Now().Format("2006-01-02 15:04:05 "))
-	fmt.Printf("%s [ERROR] - %s see workloader.log for potentially more information.\r\n", time.Now().Format("2006-01-02 15:04:05 "), msg)
+	fmt.Fprintf(errorOutput(), "%s [ERROR] - %s see workloader.log for potentially more information.\r\n", time.Now().Format("2006-01-02 15:04:05 "), msg)
 	if viper.GetBool("continue_on_error") || viper.GetString("continue_on_error_default") == "continue" {
 		Logger.Printf("[ERROR] - %s\r\n", msg)
 	} else {
@@ -79,7 +88,7 @@ func LogErrorf(format string, a ...any) {
 // LogErrorfCode a custom exitCode and uses string formatting to write to log to workloader.log and always prints msg to stdout.
 func LogErrorfCode(exitCode int, format string, a ...any) {
 	Logger.SetPrefix(time.Now().Format("2006-01-02 15:04:05 "))
-	fmt.Printf("%s [ERROR] - %s see workloader.log for potentially more information.\r\n", time.Now().Format("2006-01-02 15:04:05 "), fmt.Sprintf(format, a...))
+	fmt.Fprintf(errorOutput(), "%s [ERROR] - %s see workloader.log for potentially more information.\r\n", time.Now().Format("2006-01-02 15:04:05 "), fmt.Sprintf(format, a...))
 	Logger.Printf("[ERROR] - %s\r\n", fmt.Sprintf(format, a...))
 	if viper.GetBool("continue_on_error") || viper.GetString("continue_on_error_default") == "continue" {
 		return
