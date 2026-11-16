@@ -13,11 +13,8 @@ import (
 func unusedUmwl() {
 
 	// Get the unmanaged workloads
-	umwls, a, err := pce.GetWklds(map[string]string{"managed": "false"})
-	utils.LogAPIResp("GetAllWorkloadsQP", a)
-	if err != nil {
-		utils.LogError(err.Error())
-	}
+	umwls := getTargetUmwls()
+	utils.LogInfo(fmt.Sprintf("identified %d unmanaged workloads to check", len(umwls)), true)
 
 	// Create the default query struct and an "or" operator
 	tq := illumioapi.TrafficQuery{QueryOperator: "or", PolicyStatuses: []string{}, ExcludeWorkloadsFromIPListQuery: true}

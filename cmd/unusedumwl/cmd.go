@@ -10,11 +10,13 @@ import (
 
 var pce illumioapi.PCE
 var err error
-var start, end, exclServiceCSV, outputFileName string
+var start, end, exclServiceCSV, outputFileName, labelFile, hrefFile string
 var nonUni, includeAllUmwls bool
 var maxResults int
 
 func init() {
+	UnusedUmwlCmd.Flags().StringVar(&labelFile, "label-file", "", "csv file with labels to scope the unmanaged workloads checked. see description below.")
+	UnusedUmwlCmd.Flags().StringVar(&hrefFile, "href-file", "", "csv file with unmanaged workload hrefs to check. uses the column with an \"href\" header if present, otherwise the first column. wkld-export output can be used directly.")
 	UnusedUmwlCmd.Flags().BoolVarP(&includeAllUmwls, "all", "a", false, "export all umwls with traffic count. default only exports umwl with 0 traffic.")
 	UnusedUmwlCmd.Flags().IntVarP(&maxResults, "max-results", "m", 1000, "max results in explorer. Maximum value is 100000. A higher maxiumum value is ")
 	UnusedUmwlCmd.Flags().StringVarP(&start, "start", "s", time.Now().AddDate(0, 0, -88).In(time.UTC).Format("2006-01-02"), "start date in the format of yyyy-mm-dd.")
@@ -32,6 +34,19 @@ var UnusedUmwlCmd = &cobra.Command{
 	Short: "Create a report of unmanaged workloads with no traffic.",
 	Long: `
 	Create a report of unmanaged workloads with no traffic.
+
+By default, all unmanaged workloads are checked. Use --label-file or --href-file (not both) to limit the check to a subset.
+
+The label-file's first row should be label keys. The workload query uses an AND operator for entries on the same row and an OR operator for the separate rows. An example label file is below:
++------+-----+----------------+-----+
+| role | app | env            | loc |
++------+-----+----------------+-----+
+|      |     | decommissioned |     |
+| web  | erp |                |     |
++------+-----+----------------+-----+
+This example checks all unmanaged workloads that are
+- decommissioned (env)
+- OR web (role) AND erp (app)
 
 The update-pce and --no-prompt flags are ignored for this command.`,
 	Run: func(cmd *cobra.Command, args []string) {
