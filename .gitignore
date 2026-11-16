@@ -15,3 +15,5 @@ cmd/virtualserviceimport/*
 templates/*
 jds*
 tmp*
+go.work
+go.work.sum
