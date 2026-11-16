@@ -7,6 +7,7 @@ import (
 
 	"github.com/brian1917/illumioapi/v2"
 	"github.com/brian1917/workloader/cmd/wkldexport"
+	"github.com/brian1917/workloader/cmd/wkldimport"
 	"github.com/brian1917/workloader/utils"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -14,7 +15,7 @@ import (
 
 // Set global variables for flags
 var hrefFile, labelFile, neverUnpairFile, hrefHeader, restore string
-var updatePCE, noPrompt, includeOnline, singleAPI, singleUnpair bool
+var updatePCE, noPrompt, includeOnline, singleAPI, singleUnpair, createUmwlReplacement bool
 var hoursSinceLastHB int
 var pce illumioapi.PCE
 var err error
@@ -30,6 +31,7 @@ func init() {
 	UnpairCmd.Flags().BoolVar(&includeOnline, "include-online", false, "include workloads that are online. by default only offline workloads that meet criteria will be unpaired.")
 	UnpairCmd.Flags().BoolVar(&singleAPI, "single-api", false, "if we need to get vens and workloads from the pce query the vens on at a time vs. getting all vens. useful for very large environments that are only unpairing a small amount.")
 	UnpairCmd.Flags().BoolVar(&singleUnpair, "single-unpair", false, "one API call per unpair versus one API call per 1000 workloads. this will be significantly slower but provide more details in the pce's syslog messages.")
+	UnpairCmd.Flags().BoolVar(&createUmwlReplacement, "create-umwl-replacement", false, "create a csv of hostname, interfaces, and labels for unpaired workloads with an external data set of <date>-unpair and the original workload href as the external data reference. with --update-pce, wkld-import is run after the unpair to create the replacement unmanaged workloads.")
 
 	UnpairCmd.Flags().SortFlags = false
 }
@@ -56,7 +58,11 @@ This example queries all workloads that are
 - OR bos(loc) AND it (bu)
 - OR CRM (app)
 
-Use the --update-pce command to run the unpair with a user prompt confirmation. Use --update-pce and --no-prompt to run unpair with no prompts.`,
+Use the --update-pce command to run the unpair with a user prompt confirmation. Use --update-pce and --no-prompt to run unpair with no prompts.
+
+Use --create-umwl-replacement to generate a wkld-import compatible CSV (hostname, interfaces, labels, external_data_set, external_data_reference) for the workloads being unpaired.
+The external_data_set is "<date>-unpair" and the external_data_reference is the original workload href. When used with --update-pce, wkld-import runs
+after the unpair to create the replacement unmanaged workloads (matching on external data so the original managed workloads are never updated).`,
 
 	Run: func(cmd *cobra.Command, args []string) {
 		pce, err = utils.GetTargetPCEV2(true)
@@ -178,6 +184,10 @@ func unpair() {
 	csvHeaders = append(csvHeaders, "last_heartbeat", "hours_since_last_heartbeat")
 	csvData = append(csvData, csvHeaders)
 
+	// Build the umwl replacement csv headers
+	umwlExtDataSet := fmt.Sprintf("%s-unpair", time.Now().Format("2006-01-02"))
+	umwlCsvData := [][]string{append(append([]string{wkldexport.HeaderHostname, wkldexport.HeaderInterfaces}, labelKeys...), wkldexport.HeaderExternalDataSet, wkldexport.HeaderExternalDataReference)}
+
 	for i, v := range processVENsFile() {
 
 		if val, ok := pce.VENs[v.Href]; !ok {
@@ -217,6 +227,16 @@ func unpair() {
 			}
 			csvRow = append(csvRow, lastHB, fmt.Sprintf("%.1f", val.HoursSinceLastHeartBeat()))
 			csvData = append(csvData, csvRow)
+
+			// Build the umwl replacement row
+			if createUmwlReplacement {
+				umwlRow := []string{illumioapi.PtrToVal(wkld.Hostname), strings.Join(wkldexport.InterfaceToString(wkld, false), ";")}
+				for _, key := range labelKeys {
+					umwlRow = append(umwlRow, wkld.GetLabelByKey(key, pce.Labels).Value)
+				}
+				umwlRow = append(umwlRow, umwlExtDataSet, wkld.Href)
+				umwlCsvData = append(umwlCsvData, umwlRow)
+			}
 		}
 	}
 
@@ -232,6 +252,14 @@ func unpair() {
 	// Write the unpair CSV
 	outputFileName := fmt.Sprintf("workloader-unpair-%s.csv", time.Now().Format("20060102_150405"))
 	utils.WriteOutput(csvData, csvData, outputFileName)
+
+	// Write the umwl replacement CSV
+	umwlFileName := ""
+	if createUmwlReplacement {
+		umwlFileName = fmt.Sprintf("workloader-unpair-umwl-replacement-%s.csv", time.Now().Format("20060102_150405"))
+		utils.WriteOutput(umwlCsvData, umwlCsvData, umwlFileName)
+		utils.LogInfof(true, "umwl replacement csv with %d workloads written to %s", len(umwlCsvData)-1, umwlFileName)
+	}
 
 	// If updatePCE is disabled, we are just going to alert the user what will happen and log
 	if !updatePCE {
@@ -279,6 +307,27 @@ func unpair() {
 		}
 		utils.LogInfof(true, "unpaired %d vens", len(vensToUnpair))
 
+	}
+
+	// Create the replacement unmanaged workloads
+	if createUmwlReplacement {
+		utils.LogInfof(true, "running wkld-import with %s to create replacement unmanaged workloads", umwlFileName)
+		// Copy the pce and clear workloads so wkld-import reloads them after the unpair
+		importPCE := pce
+		importPCE.Workloads = nil
+		importPCE.WorkloadsSlice = nil
+		wkldimport.ImportWkldsFromCSV(wkldimport.Input{
+			PCE:             importPCE,
+			ImportFile:      umwlFileName,
+			ImportData:      umwlCsvData,
+			MatchString:     "external_data",
+			Umwl:            true,
+			UpdateWorkloads: false,
+			UpdatePCE:       true,
+			NoPrompt:        true,
+			MaxCreate:       -1,
+			MaxUpdate:       -1,
+		})
 	}
 }
 
