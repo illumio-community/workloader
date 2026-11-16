@@ -8,7 +8,7 @@ require (
 	github.com/brian1917/illumioapi/v2 v2.0.13
 	github.com/brian1917/illumiocloudapi v1.0.8
 	github.com/brian1917/ns v1.2.0
-	github.com/brian1917/workloader/utils v1.7.0
+	github.com/brian1917/workloader/utils v1.9.0
 	github.com/google/uuid v1.1.2
 	github.com/olekukonko/tablewriter v0.0.5
 	github.com/pkg/errors v0.9.1
