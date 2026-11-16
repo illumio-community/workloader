@@ -6,6 +6,7 @@ import (
 	"time"
 
 	ia "github.com/brian1917/illumioapi/v2"
+	"github.com/brian1917/workloader/cmd/wkldexport"
 	"github.com/brian1917/workloader/utils"
 	"github.com/spf13/cobra"
 )
@@ -13,13 +14,14 @@ import (
 // Declare local global variables
 var pce ia.PCE
 var err error
-var oneInterfaceMatch, shortHostname bool
+var oneInterfaceMatch, shortHostname, copyExternalData bool
 var outputFileName string
 
 func init() {
 	UMWLCleanUpCmd.Flags().BoolVar(&oneInterfaceMatch, "one-interface-match", false, "consider a match if at least one interface matches. default requires all interfaces to match.")
 	UMWLCleanUpCmd.Flags().BoolVar(&shortHostname, "short-hostname", false, "match on short hostname (before the first \".\"). useful when unmanaged workload has \"abc\" and managed has \"abc.domain.com\".")
 	UMWLCleanUpCmd.Flags().StringVar(&outputFileName, "output-file", "", "optionally specify the name of the output file location. default is current location with a timestamped filename.")
+	UMWLCleanUpCmd.Flags().BoolVar(&copyExternalData, "copy-external-data", false, "include external_data_set and external_data_reference columns populated from the unmanaged workload so wkld-import applies them to the managed workload.")
 
 }
 
@@ -36,7 +38,12 @@ The unmanaged workload IP address is compared to managed workload's NIC with the
 
 To label the managed workloads with the same labels on the matched unmanaged workload, the output file can be directly passed into the wkld-import command.
 
-Additionally, the output can be passed into the delete command with the --header flag set to unmanaged_href to delete the no longer needed unmanaged workloads.`,
+Additionally, the output can be passed into the delete command with the --header flag set to unmanaged_href to delete the no longer needed unmanaged workloads.
+
+Use --copy-external-data to also copy the unmanaged workload's external_data_set and external_data_reference to the managed workload. The PCE requires the external data set and reference combination to be unique, so delete the unmanaged workloads before running wkld-import:
+  workloader umwl-cleanup --copy-external-data --output-file umwl.csv
+  workloader delete umwl.csv --header unmanaged_href --update-pce
+  workloader wkld-import umwl.csv --update-pce`,
 	Run: func(cmd *cobra.Command, args []string) {
 
 		// Get the PCE
@@ -100,6 +107,9 @@ func umwlCleanUp() {
 	data := [][]string{{"managed_hostname", "umwl_hostname", "umwl_name", "managed_interfaces", "umwl_interfaces", "managed_href", "unmanaged_href", "managed_external_data_set", "managed_external_data_ref", "umwl_external_data_set", "umwl_external_data_ref"}}
 	data[0] = append(append(data[0], managedLabels...), unmanagedLabels...)
 	data[0] = append(append(data[0], "href"), ldSlice...)
+	if copyExternalData {
+		data[0] = append(data[0], wkldexport.HeaderExternalDataSet, wkldexport.HeaderExternalDataReference)
+	}
 
 	// Build a combined match map. Each entry maps a managed workload to a matched unmanaged workload.
 	type matchPair struct {
@@ -177,6 +187,9 @@ workloads:
 			dataRow = append(dataRow, managedWkld.Href)
 			for _, ld := range ldSlice {
 				dataRow = append(dataRow, umwl.GetLabelByKey(ld, pce.Labels).Value)
+			}
+			if copyExternalData {
+				dataRow = append(dataRow, ia.PtrToVal(umwl.ExternalDataSet), ia.PtrToVal(umwl.ExternalDataReference))
 			}
 			data = append(data, dataRow)
 
