@@ -78,13 +78,16 @@ jobs:
 
       - name: Make output directories
         run: |
-          mkdir windows-v${{ steps.get_version.outputs.version }} mac-v${{ steps.get_version.outputs.version }} linux_amd64-v${{ steps.get_version.outputs.version }} linux_arm-v${{ steps.get_version.outputs.version }}
+          mkdir windows-v${{ steps.get_version.outputs.version }} mac_amd64-v${{ steps.get_version.outputs.version }} mac_arm64-v${{ steps.get_version.outputs.version }} linux_amd64-v${{ steps.get_version.outputs.version }} linux_arm-v${{ steps.get_version.outputs.version }}
 
       - name: Build Windows executable
         run: GOOS=windows go build -ldflags "-X github.com/brian1917/workloader/utils.Version=${{ steps.get_version.outputs.version }} -X github.com/brian1917/workloader/utils.Commit=${{ steps.get_version.outputs.commit }}" -o ./windows-v${{ steps.get_version.outputs.version }}/workloader.exe
 
-      - name: Build Mac executable
-        run: GOOS=darwin go build -ldflags "-X github.com/brian1917/workloader/utils.Version=${{ steps.get_version.outputs.version }} -X github.com/brian1917/workloader/utils.Commit=${{ steps.get_version.outputs.commit }}" -o ./mac-v${{ steps.get_version.outputs.version }}/workloader
+      - name: Build Mac Intel (amd64) executable
+        run: GOOS=darwin GOARCH=amd64 CGO_ENABLED=0 go build -ldflags "-X github.com/brian1917/workloader/utils.Version=${{ steps.get_version.outputs.version }} -X github.com/brian1917/workloader/utils.Commit=${{ steps.get_version.outputs.commit }}" -o ./mac_amd64-v${{ steps.get_version.outputs.version }}/workloader
+
+      - name: Build Mac Apple Silicon (arm64) executable
+        run: GOOS=darwin GOARCH=arm64 CGO_ENABLED=0 go build -ldflags "-X github.com/brian1917/workloader/utils.Version=${{ steps.get_version.outputs.version }} -X github.com/brian1917/workloader/utils.Commit=${{ steps.get_version.outputs.commit }}" -o ./mac_arm64-v${{ steps.get_version.outputs.version }}/workloader
 
       - name: Build Linux amd64 executable
         run: GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -ldflags "-X github.com/brian1917/workloader/utils.Version=${{ steps.get_version.outputs.version }} -X github.com/brian1917/workloader/utils.Commit=${{ steps.get_version.outputs.commit }}" -o ./linux_amd64-v${{ steps.get_version.outputs.version }}/workloader
@@ -95,14 +98,16 @@ jobs:
       - name: Generate SHA256 checksums
         run: |
           echo "windows: $(sha256sum ./windows-v${{ steps.get_version.outputs.version }}/workloader.exe)" > checksums.txt
-          echo "mac: $(sha256sum ./mac-v${{ steps.get_version.outputs.version }}/workloader)" >> checksums.txt
+          echo "mac amd64: $(sha256sum ./mac_amd64-v${{ steps.get_version.outputs.version }}/workloader)" >> checksums.txt
+          echo "mac arm64: $(sha256sum ./mac_arm64-v${{ steps.get_version.outputs.version }}/workloader)" >> checksums.txt
           echo "linux amd64: $(sha256sum ./linux_amd64-v${{ steps.get_version.outputs.version }}/workloader)" >> checksums.txt
           echo "linux arm: $(sha256sum ./linux_arm-v${{ steps.get_version.outputs.version }}/workloader)" >> checksums.txt
 
       - name: Create release zip packages
         run: |
           zip -r windows-v${{ steps.get_version.outputs.version }}.zip windows-v${{ steps.get_version.outputs.version }}/
-          zip -r mac-v${{ steps.get_version.outputs.version }}.zip mac-v${{ steps.get_version.outputs.version }}/
+          zip -r mac_amd64-v${{ steps.get_version.outputs.version }}.zip mac_amd64-v${{ steps.get_version.outputs.version }}/
+          zip -r mac_arm64-v${{ steps.get_version.outputs.version }}.zip mac_arm64-v${{ steps.get_version.outputs.version }}/
           zip -r linux_amd64-v${{ steps.get_version.outputs.version }}.zip linux_amd64-v${{ steps.get_version.outputs.version }}/
           zip -r linux_arm-v${{ steps.get_version.outputs.version }}.zip linux_arm-v${{ steps.get_version.outputs.version }}/
 
@@ -116,7 +121,8 @@ jobs:
           body_path: ./checksums.txt
           files: |
             windows-v${{ steps.get_version.outputs.version }}.zip
-            mac-v${{ steps.get_version.outputs.version }}.zip
+            mac_amd64-v${{ steps.get_version.outputs.version }}.zip
+            mac_arm64-v${{ steps.get_version.outputs.version }}.zip
             linux_amd64-v${{ steps.get_version.outputs.version }}.zip
             linux_arm-v${{ steps.get_version.outputs.version }}.zip
             checksums.txt
