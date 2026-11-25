@@ -3,58 +3,62 @@ package deleteunusedlabels
 import (
 	"fmt"
 
-	"github.com/brian1917/illumioapi"
+	"github.com/brian1917/illumioapi/v2"
+	"github.com/brian1917/workloader/cmd/deletehrefs"
 	"github.com/brian1917/workloader/utils"
 	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 )
 
-// Set global variables for flags
-var pce illumioapi.PCE
-var err error
-
-// LabelsDeleteUnusedCmd runs the unpair
+// LabelsDeleteUnusedCmd deletes labels that are not in use
 var LabelsDeleteUnusedCmd = &cobra.Command{
 	Use:   "labels-delete-unused",
 	Short: "Delete labels that are not used.",
-	Long: `  
+	Long: `
 Delete labels that are not used.
 
-The update-pce and --no-prompt flags are ignored for this command.`,
+Label usage is determined by the PCE's label usage API. Any label not used by a workload, container workload, ruleset, label group, pairing profile, permission, virtual service, virtual server, enforcement boundary, or other policy object is identified for deletion.
+
+Without --update-pce, the command reports how many labels would be deleted. With --update-pce, the user is prompted before deleting unless --no-prompt is also set.`,
 	Run: func(cmd *cobra.Command, args []string) {
-		pce, err = utils.GetTargetPCE(true)
+		pce, err := utils.GetTargetPCEV2(true)
 		if err != nil {
 			utils.LogError(err.Error())
 		}
 
-		labelsDeleteUnused()
+		labelsDeleteUnused(pce, viper.GetBool("update_pce"), viper.GetBool("no_prompt"))
 	},
 }
 
-func labelsDeleteUnused() {
+func labelsDeleteUnused(pce illumioapi.PCE, updatePCE, noPrompt bool) {
 
-	// Get all labels
-	labels, a, err := pce.GetLabels(nil)
-	utils.LogAPIResp("GetAllLabels", a)
+	// Get all labels with usage
+	a, err := pce.GetLabels(map[string]string{"usage": "true"})
+	utils.LogAPIRespV2("GetLabels", a)
 	if err != nil {
 		utils.LogError(err.Error())
 	}
 
-	// For each label, try to delete it
-	for _, l := range labels {
-		a, err := pce.DeleteHref(l.Href)
-		utils.LogAPIResp("DeleteHref", a)
-		if err != nil {
-			message := ""
-			if a.StatusCode == 406 {
-				message = " which often means label is currently in use."
-			}
-			if a.StatusCode == 401 {
-				message = " which often means account does not have permission to delete labels."
-			}
-			utils.LogInfo(fmt.Sprintf("%s(%s) could not be deleted. Status code %d%s", l.Value, l.Key, a.StatusCode, message), false)
-		} else {
-			utils.LogInfo(fmt.Sprintf("%s(%s) deleted - Status code %d.", l.Value, l.Key, a.StatusCode), false)
+	// Build the list of unused label hrefs
+	hrefs := []string{}
+	for _, l := range pce.LabelsSlice {
+		if l.LabelUsage == nil || *l.LabelUsage != (illumioapi.LabelUsage{}) {
+			continue
 		}
+		utils.LogInfo(fmt.Sprintf("%s (%s) - %s - not in use", l.Value, l.Key, l.Href), false)
+		hrefs = append(hrefs, l.Href)
 	}
 
+	if len(hrefs) == 0 {
+		utils.LogInfo("no unused labels found.", true)
+		return
+	}
+
+	// Pass into the delete hrefs command
+	deletehrefs.DeleteHrefs(deletehrefs.Input{
+		PCE:       pce,
+		Hrefs:     hrefs,
+		UpdatePCE: updatePCE,
+		NoPrompt:  noPrompt,
+	})
 }

@@ -220,20 +220,22 @@ func DeleteHrefs(input Input) {
 	utils.LogInfo(fmt.Sprintf("%d items deleted", deleted), true)
 	utils.LogInfo(fmt.Sprintf("%d items skipped.", skipped), true)
 
-	utils.LogInfo("using bulk api action delete workloads ...", true)
-	apiResps, err := input.PCE.BulkWorkload(bulkWorkloads, "delete", true)
-	for _, a := range apiResps {
-		utils.LogAPIRespV2("BulkWorkload", a)
-	}
-	if err != nil {
-		utils.LogError(err.Error())
-	}
-	for _, w := range bulkWorkloads {
-		n := illumioapi.PtrToVal(w.Hostname)
-		if n == "" {
-			n = illumioapi.PtrToVal(w.Name)
+	if len(bulkWorkloads) > 0 {
+		utils.LogInfo("using bulk api action delete workloads ...", true)
+		apiResps, err := input.PCE.BulkWorkload(bulkWorkloads, "delete", true)
+		for _, a := range apiResps {
+			utils.LogAPIRespV2("BulkWorkload", a)
 		}
-		utils.LogInfo(fmt.Sprintf("%s - %s - passed into bulk workload delete - see bulk API responses for confirmation.", w.Href, n), false)
+		if err != nil {
+			utils.LogError(err.Error())
+		}
+		for _, w := range bulkWorkloads {
+			n := illumioapi.PtrToVal(w.Hostname)
+			if n == "" {
+				n = illumioapi.PtrToVal(w.Name)
+			}
+			utils.LogInfo(fmt.Sprintf("%s - %s - passed into bulk workload delete - see bulk API responses for confirmation.", w.Href, n), false)
+		}
 	}
 
 	// Provision if needed
